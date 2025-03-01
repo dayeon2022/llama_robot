@@ -1,0 +1,69 @@
+#필요한 모듈 설치(Ollama, ChromaDB,Langchain)
+!pip install ollama
+!pip install chromadb
+!pip install langchain
+!pip install langchain-community langchain-core
+from langchain_community.llms import Ollama
+
+
+#기본 채팅
+llm = Ollama(model="llama3")
+llm.invoke("Tell me a joke")
+
+
+#…뒤에 문장 완성
+llm = Ollama(model="mistral")
+llm("The first man on the summit of Mount Everest, the highest peak on Earth, was ...")
+
+
+#실시간 답변 출력
+from langchain.callbacks.manager import CallbackManager
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+
+
+llm = Ollama(
+    model="mistral", callback_manager=CallbackManager([StreamingStdOutCallbackHandler()])
+)
+llm("The first man on the summit of Mount Everest, the highest peak on Earth, was ...")
+
+
+#문서 임베딩(프로이드의 정신 분석 이론)
+from langchain.document_loaders import WebBaseLoader
+loader = WebBaseLoader("https://www.gutenberg.org/cache/epub/2776/pg2776.txt")
+# 프로이드의 정신 분석 이론 소개
+# https://www.gutenberg.org/cache/epub/38219/pg38219.txt
+# 우울증 해부학
+# https://www.gutenberg.org/cache/epub/10800/pg10800.txt
+data = loader.load()
+
+
+#텍스트를 split해서 임베딩(overlap과 overfitting의 적정 수준 찾아야 함)
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+
+text_splitter=RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0)
+all_splits = text_splitter.split_documents(data)
+
+
+#chunk단위로 임베딩한 vector를 ChromaDB에 저장
+from langchain.embeddings import OllamaEmbeddings
+from langchain.vectorstores import Chroma
+ollama = OllamaEmbeddings(base_url="http://localhost:11434", model="mistral")
+vectorstore = Chroma.from_documents(documents=all_splits, embedding=ollama)
+
+
+#LangChain Retrieval QA생성
+from langchain.llms import Ollama
+from langchain.chains import RetrievalQA
+qachain=RetrievalQA.from_chain_type(ollama, retriever=vectorstore.as_retriever())
+
+
+#피상담자의 질문 예시
+question1 = "I am a high school senior.These days, I feel weak and I have less conversation with my friends. I can’t eat well."
+
+
+#진단과 처방을 받기 위한 질문
+mel_question_yn = question1 + " am I melancholia ? "
+mel_question_solve = question1 + " if i am a melancholia  , please give me advices "
+qachain.invoke({"query": mel_question_yn})
+qachain.invoke({"query": mel_question_solve})
